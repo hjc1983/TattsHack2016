@@ -1,0 +1,84 @@
+#r "Microsoft.WindowsAzure.Storage"
+
+using System.Net;
+using Microsoft.WindowsAzure.Storage.Table;
+using System.Net.Mail;
+
+public static async Task<HttpResponseMessage> Run(HttpRequestMessage req, ICollector<Person> outTable, TraceWriter log)
+{
+    dynamic data = await req.Content.ReadAsAsync<object>();
+    string fromName = data?.fromName;
+    string fromLastName = data?.fromlastName;
+    string fromEmail = data?.fromEmail;
+    string fromDOB =  data?.fromDOB;
+    string fromLicense =  data?.fromLicense;
+    string toName = data?.toName;
+    string toEmail = data?.toEmail;
+    string toMessage = data?.toMessage;
+
+    if (fromName == null || toName == null || toEmail == null  || toMessage == null)
+    {
+        return req.CreateResponse(HttpStatusCode.BadRequest, "Please pass a correct format in the request body");
+    }
+
+    outTable.Add(new Person()
+    {
+        PartitionKey = "Functions",
+        RowKey = Guid.NewGuid().ToString(),
+        FromName = fromName,
+        FromLastName = fromLastName,
+        FromEmail = fromEmail,
+        FromDOB = fromDOB,
+        FromLicense = fromLicense,
+        FromId = "id-guid",
+        ToName = toName,
+        ToEmail = toEmail,
+        ToMessage = toMessage,
+        ToTheme = "Default",
+        Received = false,
+    });
+    
+    
+    string smtpHost = "smtp.sendgrid.net"; //  smtp host
+    string smtpUser = ""; //your smtp user
+    string smtpPass = ""; //your smtp password
+
+    MailMessage mail = new MailMessage(fromEmail, toEmail);
+    SmtpClient client = new SmtpClient();
+    client.DeliveryMethod = SmtpDeliveryMethod.Network;
+    client.UseDefaultCredentials = false;
+    client.Host = smtpHost;
+    client.Credentials = new System.Net.NetworkCredential(smtpUser, smtpPass);
+    mail.IsBodyHtml = true; 
+    mail.Subject = "Lott Gift Card issued";
+    mail.Body = toMessage;
+    try {
+        client.Send(mail);
+        log.Verbose("Email sent - "+ toEmail);
+    }catch (Exception ex) {
+        log.Verbose(ex.ToString());
+        return req.CreateResponse(HttpStatusCode.InternalServerError, new {
+        status = false,
+        message = "Message has not been sent. Check Azure Function Logs for more information."
+        });
+    }
+    
+    return req.CreateResponse(HttpStatusCode.Created);
+}
+
+public class Person : TableEntity
+{
+    
+    public string FromName { get; set; }
+    public string FromLastName { get; set; }
+    public string FromEmail { get; set; }
+    public string FromDOB { get; set; }
+    public string FromLicense { get; set; }
+    
+    public string FromId { get; set; }
+    public string ToName { get; set; }
+    public string ToEmail { get; set; }
+    public string ToMessage { get; set; }
+    public string ToTheme { get; set; } //xmas, bday...etc
+    public bool   Received { get; set; }
+}
